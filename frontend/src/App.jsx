@@ -595,15 +595,22 @@ function ContextWindow({ show, onClose, tabId, sessionId, contextManager }) {
   // Fetch available models on mount
   useEffect(() => {
     if (show) {
-      fetch(`${API_BASE}/api/context/models`)
-        .then(r => r.json())
-        .then(data => {
+      const fetchModels = async () => {
+        try {
+          let data;
+          if (window.superBrowserDesktop?.isElectron && window.superBrowserDesktop?.context?.getModels) {
+            data = await window.superBrowserDesktop.context.getModels();
+          } else {
+            const r = await fetch(`${API_BASE}/api/context/models`);
+            data = await r.json();
+          }
           if (data.models) {
             setModels(data.models)
             setSelectedModel(data.default || 'llama-3.1-8b-instant')
           }
-        })
-        .catch(() => {})
+        } catch (e) {}
+      };
+      fetchModels();
     }
   }, [show])
 
@@ -631,22 +638,26 @@ function ContextWindow({ show, onClose, tabId, sessionId, contextManager }) {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_BASE}/api/context/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message: text,
-          tab_id: tabId,
-          model: selectedModel
-        })
-      })
+      let data;
+      if (window.superBrowserDesktop?.isElectron && window.superBrowserDesktop?.context?.chat) {
+        data = await window.superBrowserDesktop.context.chat(sessionId, text, tabId, selectedModel);
+      } else {
+        const response = await fetch(`${API_BASE}/api/context/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: text,
+            tab_id: tabId,
+            model: selectedModel
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Chat failed: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`Chat failed: ${response.status}`);
+        }
+        data = await response.json();
       }
-
-      const data = await response.json()
       
       const aiReply = {
         id: (Date.now() + 1).toString(),
