@@ -2,15 +2,24 @@
 Context API Router - Handles context tracking, session lifecycle, chat, and export.
 """
 
+import os
+import secrets
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Header, HTTPException, Depends
 from pydantic import BaseModel
 
 from services.groq_service import ask_groq
 
-router = APIRouter()
+# Generate a high-entropy session token on first launch (or read from env if provided by Electron)
+VALID_TOKEN = os.environ.get("SUPERBROWSER_SESSION_TOKEN", secrets.token_urlsafe(32))
+
+def verify_token(x_session_token: str = Header(default="")):
+    if not VALID_TOKEN or not secrets.compare_digest(x_session_token, VALID_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 # In-memory context storage (cleared on server restart)
 # Structure: {session_id: {tab_id: context_data}}
