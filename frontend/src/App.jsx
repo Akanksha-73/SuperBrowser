@@ -254,7 +254,7 @@ export default function App() {
 
         {isBrowserTab ? (
           <div className="flex-1 min-h-0 bg-[var(--bg-surface)]">
-            <BrowserPanel url={activeTab.browserUrl} title={activeTab.browserTitle} onClose={() => updateTab(activeTabId, { browserUrl: "", browserTitle: "" })} />
+            <BrowserPanel tabId={activeTabId} url={activeTab.browserUrl} title={activeTab.browserTitle} onClose={() => updateTab(activeTabId, { browserUrl: "", browserTitle: "" })} />
           </div>
         ) : isNewTab ? (
           /* Hand-drawn Centered Landing Page */
@@ -595,15 +595,22 @@ function ContextWindow({ show, onClose, tabId, sessionId, contextManager }) {
   // Fetch available models on mount
   useEffect(() => {
     if (show) {
-      fetch(`${API_BASE}/api/context/models`)
-        .then(r => r.json())
-        .then(data => {
+      const fetchModels = async () => {
+        try {
+          let data;
+          if (window.superBrowserDesktop?.isElectron && window.superBrowserDesktop?.context?.getModels) {
+            data = await window.superBrowserDesktop.context.getModels();
+          } else {
+            const r = await fetch(`${API_BASE}/api/context/models`);
+            data = await r.json();
+          }
           if (data.models) {
             setModels(data.models)
             setSelectedModel(data.default || 'llama-3.1-8b-instant')
           }
-        })
-        .catch(() => {})
+        } catch (e) {}
+      };
+      fetchModels();
     }
   }, [show])
 
@@ -631,22 +638,26 @@ function ContextWindow({ show, onClose, tabId, sessionId, contextManager }) {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_BASE}/api/context/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message: text,
-          tab_id: tabId,
-          model: selectedModel
-        })
-      })
+      let data;
+      if (window.superBrowserDesktop?.isElectron && window.superBrowserDesktop?.context?.chat) {
+        data = await window.superBrowserDesktop.context.chat(sessionId, text, tabId, selectedModel);
+      } else {
+        const response = await fetch(`${API_BASE}/api/context/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: text,
+            tab_id: tabId,
+            model: selectedModel
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Chat failed: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`Chat failed: ${response.status}`);
+        }
+        data = await response.json();
       }
-
-      const data = await response.json()
       
       const aiReply = {
         id: (Date.now() + 1).toString(),
@@ -738,8 +749,8 @@ function ContextWindow({ show, onClose, tabId, sessionId, contextManager }) {
 
 function BackendStatusBanner() { return null } // Hidden for minimalist aesthetic
 
-function BrowserPanel({ url, title, onClose }) {
-  const reloadWebview = () => document.getElementById(`webview-${url}`)?.reload()
+function BrowserPanel({ tabId, url, title, onClose }) {
+  const reloadWebview = () => document.getElementById(`webview-${tabId}`)?.reload()
 
   return (
     <div className="h-full flex flex-col bg-[var(--bg-surface)] animate-fade-in-up">
@@ -751,7 +762,7 @@ function BrowserPanel({ url, title, onClose }) {
         </div>
         <input value={url} readOnly className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm rounded-lg px-3 py-1.5 outline-none text-[var(--text-secondary)]" />
       </div>
-      <webview id={`webview-${url}`} src={url} className="w-full flex-1" style={{ minHeight: 0 }} allowpopups="true" />
+      <webview id={`webview-${tabId}`} src={url} className="w-full flex-1" style={{ minHeight: 0 }} allowpopups="true" />
     </div>
   )
 }
